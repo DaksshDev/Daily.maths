@@ -1,7 +1,7 @@
 using UnityEngine;
 using TMPro;
 using UnityEngine.UI;
-using Firebase.Firestore;
+
 public class Progression : MonoBehaviour
 {
     [CoolHeader("ProgressDisplay(HomeScreen)")]
@@ -72,10 +72,10 @@ public class Progression : MonoBehaviour
         xpToNext        = progressNeeded - coinsToNext;
         progressPercent = (float)remainingProgress / nextLevelRequirement;
 
-        SaveToPlayerPrefs();
+        PlayerPrefs.SetInt("currentLevel", currentLevel);
+        PlayerPrefs.Save();
 
-        if (Application.internetReachability != NetworkReachability.NotReachable)
-            SaveToFirebase();
+        UserDataService.Instance?.SaveLevel(currentLevel);
 
         UpdateUI();
     }
@@ -106,21 +106,10 @@ public class Progression : MonoBehaviour
             percentText.text = Mathf.RoundToInt(progressPercent * 100f) + "%";
     }
 
-    private void SaveToPlayerPrefs()
-    {
-        PlayerPrefs.SetInt("currentLevel", currentLevel);
-        PlayerPrefs.Save();
-    }
-
-    private void SaveToFirebase()
-    {
-        UserDataService.Instance?.SaveLevel(currentLevel);
-    }
-
     public void OnProgressChanged() => CalculateLevel();
 
-    public int   GetCurrentLevel()      => currentLevel;
-    public int   GetCoinsToNext()       => coinsToNext;
-    public int   GetXPToNext()          => xpToNext;
-    public float GetProgressPercent()   => progressPercent;
+    public int   GetCurrentLevel()    => currentLevel;
+    public int   GetCoinsToNext()     => coinsToNext;
+    public int   GetXPToNext()        => xpToNext;
+    public float GetProgressPercent() => progressPercent;
 }
