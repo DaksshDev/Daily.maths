@@ -40,6 +40,9 @@ public class HelpfulInfoMgr : MonoBehaviour
     private Vector2      swipeStart;
     private bool         tracking;
 
+    // Captured once per LoadCategory — only X is ever animated, Y never moves.
+    private float _containerLockedY;
+
     private HorizontalLayoutGroup layoutGroup;
 
     private static string Sup(string s) => $"<sup>{s}</sup>";
@@ -109,19 +112,21 @@ public class HelpfulInfoMgr : MonoBehaviour
         foreach (Transform child in container)
             Destroy(child.gameObject);
 
+        // Lock Y from the designer-set position; reset X to 0 for the first card.
+        _containerLockedY          = container.anchoredPosition.y;
+        container.anchoredPosition = new Vector2(0f, _containerLockedY);
+
         for (int i = 0; i < currentCards.Count; i++)
         {
-            GameObject card = Instantiate(cardPrefab, container);
-            RectTransform rt = card.GetComponent<RectTransform>();
+            GameObject    card = Instantiate(cardPrefab, container);
+            RectTransform rt   = card.GetComponent<RectTransform>();
 
             rt.anchoredPosition = new Vector2(i * cardWidth, 0f);
 
             card.transform.Find("text").GetComponent<TMP_Text>().text = currentCards[i];
 
-            Button btn = card.transform.Find("button").GetComponent<Button>();
+            Button btn      = card.transform.Find("button").GetComponent<Button>();
             string captured = currentCards[i];
-
-            // Wire the "Practice This" button to launch the game in Practice-This mode
             btn.onClick.AddListener(() => OnPracticeClicked(captured));
         }
         
@@ -154,23 +159,25 @@ public class HelpfulInfoMgr : MonoBehaviour
 
     private IEnumerator SlideAnim(bool forward)
     {
-        animating = true;
+        animating     = true;
         currentIndex += forward ? 1 : -1;
+        currentIndex  = Mathf.Clamp(currentIndex, 0, currentCards.Count - 1);
 
-        currentIndex = Mathf.Clamp(currentIndex, 0, currentCards.Count - 1);
-
-        Vector2 from = container.anchoredPosition;
-        Vector2 to   = new Vector2(-currentIndex * cardWidth, 0f);
+        // Only interpolate X — Y is permanently locked.
+        float fromX = container.anchoredPosition.x;
+        float toX   = -currentIndex * cardWidth;
 
         float t = 0f;
         while (t < 1f)
         {
             t = Mathf.Min(t + Time.deltaTime / slideDuration, 1f);
-            container.anchoredPosition = Vector2.LerpUnclamped(from, to, EaseInOutCubic(t));
+            container.anchoredPosition = new Vector2(
+                Mathf.LerpUnclamped(fromX, toX, EaseInOutCubic(t)),
+                _containerLockedY);
             yield return null;
         }
 
-        container.anchoredPosition = to;
+        container.anchoredPosition = new Vector2(toX, _containerLockedY);
         RefreshNav();
         animating = false;
     }
@@ -286,10 +293,7 @@ public class HelpfulInfoMgr : MonoBehaviour
             return;
         }
 
-        // Hide the helpful info panel before launching the game
         helpfulInfoPanel.SetActive(false);
-
-        // Hand off to GameManager — it will handle countdown → questions → results
         gameManager.StartPracticeThis(cardContent);
     }
 }

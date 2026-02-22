@@ -36,6 +36,8 @@ public class GameManager : MonoBehaviour
     public GameObject signPrefab;
 
     [Header("Game Container")]
+    [Tooltip("Top-level page that contains the game UI — activated when entering Practice-This mode")]
+    public GameObject mainGamePage;
     public GameObject gameContainer;
 
     [Header("XP / Coins Display")]
@@ -197,8 +199,9 @@ public class GameManager : MonoBehaviour
             progressBar.value    = 0;
         }
 
-        // Activate the game container BEFORE StartGame so the countdown
-        // GameObject is active and its coroutine can actually start.
+        // Activate the main page and game container BEFORE StartGame so the
+        // countdown GameObject is active and its coroutine can actually start.
+        if (mainGamePage  != null) mainGamePage.SetActive(true);
         if (gameContainer != null) gameContainer.SetActive(true);
 
         // Kick off the countdown → game
