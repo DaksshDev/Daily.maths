@@ -9,6 +9,7 @@ public class HomeToPracticeTransition : MonoBehaviour
     public RectTransform HomeScreen;
     public GameObject GameScreen;
     public GameManager gameManager;
+    public SwipeButton SwipeButton;
     private bool animating = false;
 
     private Vector2 DEFAULT_homePos;
@@ -56,6 +57,7 @@ public class HomeToPracticeTransition : MonoBehaviour
     {
         yield return new WaitForSeconds(0.5f);
         home.anchoredPosition = DEFAULT_homePos;
+        SwipeButton.ResetPosToOff();
     }
 
     public void CloseGameScreen()

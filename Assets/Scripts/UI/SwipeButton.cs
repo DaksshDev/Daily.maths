@@ -107,4 +107,14 @@ public class SwipeButton : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
         float scale = Mathf.Lerp(1f, scaleMultiplier, t);
         buttonContainer.localScale = Vector3.one * scale;
     }
+    
+    public void ResetPosToOff()
+    {
+        targetIndex = 0;
+        isDragging = false;
+        wasTriggered = false;
+        SetPanelPosition(xPositions[0]);
+        UpdateVisualPanel(0f);
+        UpdateButtonScale(0f);
+    }
 }

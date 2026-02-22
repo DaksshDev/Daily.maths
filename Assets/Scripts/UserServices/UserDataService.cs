@@ -1,6 +1,6 @@
 using UnityEngine;
 using UnityEngine.Events;
-using System.Collections.Generic;
+using System;
 
 /// <summary>
 /// Single source of truth for all user data.
@@ -30,17 +30,30 @@ public class UserDataService : MonoBehaviour
     public string CreatedAt  { get; private set; } = "";
     public bool   DataLoaded { get; private set; } = false;
 
+    // ── Streak / Daily Challenge Keys ─────────────────────────────────────────
+    public const  string LastStreakTimestampKey      = "lastStreakTimestamp";
+    public const  string DailyChallengeDateKey       = "dailyChallengeDate";
+    private const double StreakWindowHours           = 24.0;
+    public  const double StreakWarningThresholdHours = 2.0;
+
     // ── Payload ───────────────────────────────────────────────────────────────
     [System.Serializable]
     public class UserDataPayload
     {
-        public string username;
-        public string userClass;
-        public int    streak;
-        public int    coins;
-        public int    xp;
-        public int    level;
-        public string createdAt;
+        public string   username;
+        public string   userClass;
+        public int      streak;
+        public int      coins;
+        public int      xp;
+        public int      level;
+        public string   createdAt;
+        public TimeSpan streakTimeRemaining;
+        public bool     dailyChallengeCompletedToday;
+        /// <summary>
+        /// True when a real timestamp existed but the 24h window has passed.
+        /// Distinct from TimeSpan.Zero meaning "no timestamp yet".
+        /// </summary>
+        public bool     streakExpired;
     }
 
     // ==========================================================================
@@ -57,83 +70,134 @@ public class UserDataService : MonoBehaviour
     //  Public API
     // ==========================================================================
 
-    /// <summary>Load data from PlayerPrefs and fire event.</summary>
-    public void FetchUserData()
-    {
-        LoadFromPlayerPrefs();
-    }
+    public void FetchUserData() => LoadFromPlayerPrefs();
 
-    /// <summary>Re-fire event with cached data. Falls through to FetchUserData if cold.</summary>
     public void RefreshAllListeners()
     {
         if (!DataLoaded) { FetchUserData(); return; }
         FireUserDataEvent();
     }
 
-    /// <summary>Called by Onboarding after completion.</summary>
     public void MarkOnboardingComplete()
     {
         PlayerPrefs.SetInt("OnboardingComplete", 1);
         PlayerPrefs.Save();
     }
 
-    /// <summary>Add XP + Coins at end of session.</summary>
     public void CommitSessionScore(int gainedXP, int gainedCoins)
     {
         XP    += gainedXP;
         Coins += gainedCoins;
-
         PlayerPrefs.SetInt("xp",    XP);
         PlayerPrefs.SetInt("coins", Coins);
         PlayerPrefs.Save();
-
         OnUserDataSaved?.Invoke();
         FireUserDataEvent();
     }
 
-    /// <summary>Increment streak.</summary>
     public void IncrementStreak()
     {
         Streak++;
         PlayerPrefs.SetInt("streak", Streak);
         PlayerPrefs.Save();
-
         OnUserDataSaved?.Invoke();
         FireUserDataEvent();
     }
 
-    /// <summary>Save calculated level.</summary>
     public void SaveLevel(int level)
     {
         Level = level;
         PlayerPrefs.SetInt("currentLevel", level);
         PlayerPrefs.Save();
-
         OnUserDataSaved?.Invoke();
         FireUserDataEvent();
     }
 
-    /// <summary>Save username + class to PlayerPrefs.</summary>
     public void SaveProfile(string username, string userClass, bool mergeToFirebase = true)
     {
-        // mergeToFirebase param kept for API compatibility but ignored
         Username  = username;
         UserClass = userClass;
-
         PlayerPrefs.SetString("username", username);
         PlayerPrefs.SetString("class",    userClass);
+        PlayerPrefs.Save();
+        OnUserDataSaved?.Invoke();
+        FireUserDataEvent();
+    }
+
+    // ==========================================================================
+    //  Streak & Daily Challenge
+    // ==========================================================================
+
+    /// <summary>
+    /// Evaluates streak state from PlayerPrefs.
+    /// If the streak has expired this resets it to 0 immediately and saves.
+    /// Returns a StreakState describing what happened.
+    /// </summary>
+    public StreakState EvaluateStreak()
+    {
+        string raw         = PlayerPrefs.GetString(LastStreakTimestampKey, "");
+        bool   hasStamp    = !string.IsNullOrEmpty(raw) && long.TryParse(raw, out long unix);
+
+        if (!hasStamp)
+            return new StreakState { remaining = TimeSpan.Zero, expired = false };
+
+        DateTime resetAt  = DateTimeOffset.FromUnixTimeSeconds(
+                                long.Parse(raw)).LocalDateTime.AddHours(StreakWindowHours);
+        TimeSpan remaining = resetAt - DateTime.Now;
+
+        if (remaining <= TimeSpan.Zero)
+        {
+            // Expired — reset streak to 0 right here in UserDataService
+            if (Streak != 0)
+            {
+                Streak = 0;
+                PlayerPrefs.SetInt("streak", 0);
+                // Clear the timestamp so we don't fire expired again next load
+                PlayerPrefs.DeleteKey(LastStreakTimestampKey);
+                PlayerPrefs.Save();
+            }
+            return new StreakState { remaining = TimeSpan.Zero, expired = true };
+        }
+
+        return new StreakState { remaining = remaining, expired = false };
+    }
+
+    public struct StreakState
+    {
+        public TimeSpan remaining;
+        public bool     expired;
+    }
+
+    /// <summary>How long until streak resets. Zero = no stamp or already expired.</summary>
+    public TimeSpan GetStreakTimeRemaining() => EvaluateStreak().remaining;
+
+    /// <summary>True when today's daily challenge has been completed.</summary>
+    public bool IsDailyChallengeCompletedToday()
+    {
+        string today = DateTime.Now.ToString("yyyy-MM-dd");
+        return PlayerPrefs.GetString(DailyChallengeDateKey, "") == today;
+    }
+
+    /// <summary>
+    /// Call after a successful daily session.
+    /// Increments streak, stamps today, resets 24h window to NOW.
+    /// </summary>
+    public void MarkDailyChallengeComplete()
+    {
+        IncrementStreak();
+
+        PlayerPrefs.SetString(DailyChallengeDateKey, DateTime.Now.ToString("yyyy-MM-dd"));
+        PlayerPrefs.SetString(LastStreakTimestampKey, DateTimeOffset.Now.ToUnixTimeSeconds().ToString());
         PlayerPrefs.Save();
 
         OnUserDataSaved?.Invoke();
         FireUserDataEvent();
     }
-    
-    // ── Refresh ───────────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Hides home screen UI, waits 0.5s, re-fetches PlayerPrefs, then restores.
-    /// Call this after any save that should visually "refresh" the home screen.
-    /// </summary>
+    // ==========================================================================
+    //  Refresh / Reset
+    // ==========================================================================
+
     public void RefreshHomeScreen(HomeScreenMgr homeScreenMgr, Progression progression)
     {
         if (homeScreenMgr == null && progression == null) return;
@@ -143,38 +207,26 @@ public class UserDataService : MonoBehaviour
     private System.Collections.IEnumerator RefreshHomeScreenRoutine(
         HomeScreenMgr homeScreenMgr, Progression progression)
     {
-        // 1. Hide + blank everything
         homeScreenMgr?.SetDisplayVisible(false);
         progression?.ResetDisplay();
 
-        // 2. Re-fetch clean data in the background (no event fire yet)
-        LoadFromPlayerPrefs();        // reloads all cached fields
-        DataLoaded = false;           // suppress auto-broadcast mid-reset
+        LoadFromPlayerPrefs();
+        DataLoaded = false;
 
-        yield return new WaitForSeconds(RefreshDelay);
+        yield return new UnityEngine.WaitForSeconds(RefreshDelay);
 
-        // 3. Re-enable and push fresh data
         DataLoaded = true;
         homeScreenMgr?.SetDisplayVisible(true);
-        progression?.CalculateLevel();   // recalcs + updates its own UI
-        FireUserDataEvent();             // pushes username/streak/coins/xp to listeners
+        progression?.CalculateLevel();
+        FireUserDataEvent();
     }
 
-    /// <summary>Wipe all PlayerPrefs and reset cached state.</summary>
-    public void ResetAndDeleteAccount(System.Action onComplete = null, System.Action<string> onError = null)
+    public void ResetAndDeleteAccount(Action onComplete = null, Action<string> onError = null)
     {
         PlayerPrefs.DeleteAll();
         PlayerPrefs.Save();
-
-        Username   = "Player";
-        UserClass  = "";
-        Streak     = 0;
-        Coins      = 0;
-        XP         = 0;
-        Level      = 0;
-        CreatedAt  = "";
-        DataLoaded = false;
-
+        Username = "Player"; UserClass = ""; Streak = 0;
+        Coins = 0; XP = 0; Level = 0; CreatedAt = ""; DataLoaded = false;
         onComplete?.Invoke();
     }
 
@@ -192,22 +244,40 @@ public class UserDataService : MonoBehaviour
         Level     = PlayerPrefs.GetInt   ("currentLevel",  0);
         CreatedAt = PlayerPrefs.GetString("createdAt",    "");
 
+        // Save lastStreak NOW before EvaluateStreak() can zero it out
+        if (Streak > 0)
+        {
+            PlayerPrefs.SetInt("lastStreak", Streak);
+            PlayerPrefs.Save();
+        }
+
+        var streakState = EvaluateStreak();
+
         DataLoaded = true;
         OnOfflineLoad?.Invoke();
-        FireUserDataEvent();
+        FireUserDataEvent(streakState);
     }
 
     private void FireUserDataEvent()
     {
+        // Re-evaluate fresh (used by CommitSessionScore, MarkDailyChallengeComplete, etc.)
+        FireUserDataEvent(EvaluateStreak());
+    }
+
+    private void FireUserDataEvent(StreakState streakState)
+    {
         OnUserDataLoaded?.Invoke(new UserDataPayload
         {
-            username  = Username,
-            userClass = UserClass,
-            streak    = Streak,
-            coins     = Coins,
-            xp        = XP,
-            level     = Level,
-            createdAt = CreatedAt,
+            username                     = Username,
+            userClass                    = UserClass,
+            streak                       = Streak,
+            coins                        = Coins,
+            xp                           = XP,
+            level                        = Level,
+            createdAt                    = CreatedAt,
+            streakTimeRemaining          = streakState.remaining,
+            streakExpired                = streakState.expired,
+            dailyChallengeCompletedToday = IsDailyChallengeCompletedToday(),
         });
     }
 }

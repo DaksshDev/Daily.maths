@@ -79,4 +79,10 @@ public class timer : MonoBehaviour
         if (fillImage != null)        fillImage.color = c;
         if (timeRemainingText != null) timeRemainingText.color = c;
     }
+    
+    public void ResumeTimer()
+    {
+        if (remaining > 0f)
+            running = true;  // just flip the flag — remaining is already correct
+    }
 }

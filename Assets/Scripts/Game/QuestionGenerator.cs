@@ -11,8 +11,8 @@ public class Question
 {
     public string       displayText;
     public float        answer;
-    public string       difficulty;       // "VeryEasy" | "Easy" | "Medium" | "Hard"
-    public int          difficultyScore;  // 1–5 mental-effort score
+    public string       difficulty;
+    public int          difficultyScore;
     public List<string> tags;
     public float        timeAlloted;
     public bool         isFraction;
@@ -41,27 +41,20 @@ public class FractionData
 }
 
 // =============================================================================
-//  TagPerformance  — per-operation-type solve-time + accuracy tracking
+//  TagPerformance
 // =============================================================================
 
 public class TagPerformance
 {
     public int   attempts;
     public int   correct;
-
-    // EMA of raw seconds on CORRECT answers only (wrong/skip time is noise)
     public int   correctCount;
     public float avgCorrectSolveTime;
-
-    // EMA of elapsed/allotted across all attempts (for weakness scoring)
     public float avgTimeRatio;
 
-    // We need at least this many correct samples before trusting the timing data
     private const int MIN_TRUSTED_SAMPLES = 3;
 
-    // ── Derived ───────────────────────────────────────────────────────────────
-
-    public float Accuracy     => attempts == 0 ? 1f : (float)correct / attempts;
+    public float Accuracy       => attempts == 0 ? 1f : (float)correct / attempts;
     public bool  HasTrustedTime => correctCount >= MIN_TRUSTED_SAMPLES;
 
     public float WeaknessScore
@@ -75,19 +68,15 @@ public class TagPerformance
         }
     }
 
-    // ── Recording ─────────────────────────────────────────────────────────────
-
     public void Record(bool wasCorrect, float elapsed, float allotted)
     {
         attempts++;
         if (wasCorrect) correct++;
 
-        // Time-ratio EMA (all attempts)
         float ratio  = allotted > 0f ? Mathf.Clamp(elapsed / allotted, 0f, 1.5f) : 1f;
         float alphaR = attempts == 1 ? 1f : 0.3f;
         avgTimeRatio = Mathf.Lerp(avgTimeRatio, ratio, alphaR);
 
-        // Correct-solve-time EMA (signal-only — ignore wrong/skip noise)
         if (wasCorrect)
         {
             correctCount++;
@@ -98,7 +87,7 @@ public class TagPerformance
 }
 
 // =============================================================================
-//  TypeStats  — session summary exposed for the end-screen
+//  TypeStats
 // =============================================================================
 
 public class TypeStats
@@ -127,7 +116,6 @@ public class QuestionGenerator : MonoBehaviour
     [CoolHeader("QuestionGen Algorithm")]
     
     [Space]
-    // ── Inspector ─────────────────────────────────────────────────────────────
     [Header("Dev Mode")]
     public bool devMode            = false;
     [Range(1, 10)] public int devUserIQ = 8;
@@ -136,19 +124,15 @@ public class QuestionGenerator : MonoBehaviour
     [Header("Dynamic Timing Tuning")]
     [Tooltip(
         "How strongly the user's measured solve time steers the allotted time.\n" +
-        "0 = fully static (difficulty score only).\n" +
-        "1 = fully user-driven (user data only).\n" +
-        "0.6 is the recommended starting value.")]
+        "0 = fully static.\n1 = fully user-driven.\n0.6 is recommended.")]
     [Range(0f, 1f)]
     public float userTimingWeight = 0.6f;
 
-    [Tooltip(
-        "Multiplier on the user's avg correct-solve time to set a generous but " +
-        "pressured deadline.  1.4 = 40 % more time than they usually take.")]
+    [Tooltip("Multiplier on the user's avg correct-solve time to give a generous deadline.")]
     [Range(1.1f, 2.5f)]
     public float solveTimeBuffer = 1.4f;
 
-    // ── Adaptive State (RAM only — never touches PlayerPrefs mid-session) ─────
+    // ── Adaptive State ────────────────────────────────────────────────────────
     private readonly Dictionary<string, TagPerformance> _tagPerf   = new();
     private readonly Dictionary<string, TypeStats>      _typeStats  = new();
     private readonly Queue<string>                      _recentTiers = new();
@@ -156,11 +140,10 @@ public class QuestionGenerator : MonoBehaviour
 
     private int   _consecutiveWrong;
     private int   _consecutiveFast;
-    private int   _streakModifier;      // –1 | 0 | +1 applied to tier selection
+    private int   _streakModifier;
     private float _sessionAccuracy = 1f;
     private int   _sessionAttempts;
 
-    // Operation-type distribution guard
     private readonly Dictionary<string, int> _opCount = new()
     {
         ["Addition"] = 0, ["Subtraction"] = 0,
@@ -171,6 +154,13 @@ public class QuestionGenerator : MonoBehaviour
     private Dictionary<string, List<System.Func<Question>>> _pools;
     private int _daysSinceInstall;
     private int _userIQ;
+
+    // ── Practice-This Topic ───────────────────────────────────────────────────
+
+    // The topic key derived from the HelpfulInfo card (e.g. "Tables", "Squares",
+    // "Cubes", "Conversion Chart", or a specific table like "Table of 7").
+    private string _practiceThisTopic = "";
+    private bool   _hasPracticeThisTopic = false;
 
     // ==========================================================================
     //  Public API
@@ -199,10 +189,36 @@ public class QuestionGenerator : MonoBehaviour
     }
 
     /// <summary>
-    /// Call from GameManager after EVERY question result.
-    /// <paramref name="elapsed"/>  = actual seconds from question load → answer/skip.
-    /// <paramref name="allotted"/> = timeAlloted on the Question that was shown.
+    /// Sets the topic for Practice-This mode.
+    /// Pass in the first line / header of the card content so we can parse the topic.
     /// </summary>
+    public void SetPracticeThisTopic(string cardContent)
+    {
+        // Extract the first line which carries the topic header
+        // e.g. "Table of 7\n──────────────\n7 x 1 = 7\n..."
+        // or   "SQUARES 1-10\n..."
+        string firstLine = cardContent.Split('\n')[0].Trim().ToUpper();
+
+        _hasPracticeThisTopic = true;
+        _practiceThisTopic    = firstLine;
+
+        // Reset op counts / session state so distribution tracking is fresh
+        foreach (var key in _opCount.Keys.ToList()) _opCount[key] = 0;
+        _totalGenerated  = 0;
+        _sessionAttempts = 0;
+        _sessionAccuracy = 1f;
+
+        Debug.Log($"[QGen] Practice-This topic set: '{_practiceThisTopic}'");
+    }
+
+    /// <summary>Clears the Practice-This topic so normal generation resumes.</summary>
+    public void ClearPracticeThisTopic()
+    {
+        _hasPracticeThisTopic = false;
+        _practiceThisTopic    = "";
+        Debug.Log("[QGen] Practice-This topic cleared.");
+    }
+
     public void RecordAnswer(List<string> tags, bool correct, float elapsed, float allotted)
     {
         _sessionAttempts++;
@@ -219,7 +235,6 @@ public class QuestionGenerator : MonoBehaviour
             _consecutiveFast = 0;
         }
 
-        // Streak modifier — single-step only, no level skipping
         if (_consecutiveFast >= 5 && _streakModifier < 1)
         {
             _streakModifier++;
@@ -235,7 +250,6 @@ public class QuestionGenerator : MonoBehaviour
 
         _sessionAccuracy = Mathf.Lerp(_sessionAccuracy, correct ? 1f : 0f, 0.25f);
 
-        // Feed per-tag performance (this is what drives dynamic timing)
         foreach (var tag in tags)
         {
             if (!_tagPerf.TryGetValue(tag, out var perf))
@@ -243,7 +257,6 @@ public class QuestionGenerator : MonoBehaviour
             perf.Record(correct, elapsed, allotted);
         }
 
-        // Session summary for the end-screen
         if (tags.Count > 0)
         {
             string opKey = tags[0];
@@ -267,7 +280,6 @@ public class QuestionGenerator : MonoBehaviour
         return _tagPerf.OrderByDescending(kv => kv.Value.WeaknessScore).First().Key;
     }
 
-    /// <summary>Returns per-type stats for the end-screen accuracy/speed breakdown.</summary>
     public Dictionary<string, TypeStats> GetTypeStats() => _typeStats;
 
     // ==========================================================================
@@ -305,7 +317,7 @@ public class QuestionGenerator : MonoBehaviour
         if (_daysSinceInstall >= 5)
         {
             p.Add(() => FracSameDenom("Easy"));
-            p.Add(() => FracSameDenom("Easy")); // 2× weight for practice
+            p.Add(() => FracSameDenom("Easy"));
         }
         return p;
     }
@@ -349,23 +361,34 @@ public class QuestionGenerator : MonoBehaviour
 
     private Question GenerateSingle(int index, int total)
     {
+        // ── Practice-This mode: override normal generation ────────────────────
+        if (_hasPracticeThisTopic)
+        {
+            var ptQ = GeneratePracticeThisQuestion(index, total);
+            if (ptQ != null)
+            {
+                TrackOp(ptQ);
+                _totalGenerated++;
+                Debug.Log($"[QGen] PracticeThis slot={index} tags=[{string.Join(",", ptQ.tags)}]");
+                return ptQ;
+            }
+        }
+
+        // ── Normal generation ─────────────────────────────────────────────────
         string tier = ChooseTier(index, total);
 
         _recentTiers.Enqueue(tier);
         if (_recentTiers.Count > HISTORY_WINDOW) _recentTiers.Dequeue();
 
-        // Rule: no 3 consecutive Hard questions
         if (tier == "Hard" && _recentTiers.Count(t => t == "Hard") >= 3)
         {
             tier = "Medium";
             Debug.Log("[QGen] Hard-cap: 3 consecutive → Medium");
         }
 
-        // Rule: fractions ≤ 25 % of total
         bool blockFractions = _totalGenerated > 0 &&
                               (float)_opCount["Fractions"] / _totalGenerated >= 0.25f;
 
-        // Weak-tag reinforcement (after warm-up, capped at 35 %)
         if (_sessionAttempts >= 5 && Random.value < WeakTagInjectionChance())
         {
             var weakQ = TryBuildWeakTagQuestion(tier, blockFractions);
@@ -380,7 +403,6 @@ public class QuestionGenerator : MonoBehaviour
             }
         }
 
-        // Normal pool draw — re-roll if fractions are capped
         var pool = _pools.TryGetValue(tier, out var p) ? p : _pools["Easy"];
         Question q;
         int tries = 0;
@@ -392,6 +414,188 @@ public class QuestionGenerator : MonoBehaviour
         Debug.Log($"[QGen] slot={index} tier={tier} diff={q.difficultyScore} " +
                   $"time={q.timeAlloted:F1}s tags=[{string.Join(",", q.tags)}]");
         return q;
+    }
+
+    // ==========================================================================
+    //  Practice-This Generation
+    // ==========================================================================
+
+    /// <summary>
+    /// Generates a question themed around the active Practice-This topic.
+    ///
+    /// Topic strings (uppercased first line of the card):
+    ///   "TABLE OF N"          → multiplication/division for table N
+    ///   "TABLES N–M" etc.     → random table in range
+    ///   "SQUARES 1–10" etc.   → n² questions
+    ///   "CUBES 1–10" etc.     → n³ questions
+    ///   "LENGTH" / "MASS" /
+    ///   "VOLUME..." etc.      → unit conversion word problems (arithmetic)
+    ///   "FRACTIONS" / any
+    ///   fraction card         → fraction questions
+    ///   fallback              → mixed arithmetic
+    /// </summary>
+    private Question GeneratePracticeThisQuestion(int index, int total)
+    {
+        string topic = _practiceThisTopic;
+
+        // ── Tables ────────────────────────────────────────────────────────────
+        if (topic.StartsWith("TABLE OF"))
+        {
+            // "TABLE OF 7"
+            if (int.TryParse(topic.Replace("TABLE OF", "").Trim(), out int n))
+                return TableQuestion(n);
+        }
+
+        if (topic.StartsWith("TABLES") || topic == "TABLES")
+        {
+            // "TABLES 1–30" or just "TABLES" — pick a random table 1–12
+            int n = Random.Range(1, 13);
+            return TableQuestion(n);
+        }
+
+        // ── Squares ───────────────────────────────────────────────────────────
+        if (topic.StartsWith("SQUARES"))
+        {
+            // Parse "SQUARES 1–10", "SQUARES 11–20", "SQUARES 21–30"
+            ParseRange(topic.Replace("SQUARES", "").Trim(), 1, 30, out int lo, out int hi);
+            int n     = Random.Range(lo, hi + 1);
+            int score = ComputeDiffScore(n >= 10 ? 1 : 0);
+            float time = ComputeDynamicTime(score, "Multiplication");
+            return new Question($"{n}² = ?", (float)(n * n), "Medium", score,
+                new List<string> { "Multiplication", "squares" }, time);
+        }
+
+        // ── Cubes ─────────────────────────────────────────────────────────────
+        if (topic.StartsWith("CUBES"))
+        {
+            ParseRange(topic.Replace("CUBES", "").Trim(), 1, 20, out int lo, out int hi);
+            int n     = Random.Range(lo, hi + 1);
+            int score = ComputeDiffScore(n >= 5 ? 2 : 1);
+            float time = ComputeDynamicTime(score, "Multiplication");
+            return new Question($"{n}³ = ?", (float)((long)n * n * n), "Hard", score,
+                new List<string> { "Multiplication", "cubes" }, time);
+        }
+
+        // ── Fractions ─────────────────────────────────────────────────────────
+        if (topic.Contains("FRACTION"))
+        {
+            bool diffDenom = Random.value < 0.5f;
+            return diffDenom ? FracDiffDenom("Medium") : FracSameDenom("Medium");
+        }
+
+        // ── Conversion topics → arithmetic word-problem style ─────────────────
+        // For LENGTH, MASS, VOLUME, TIME, TEMPERATURE, AREA, SPEED, PRESSURE, ENERGY
+        // we generate arithmetic that mirrors the mental arithmetic involved in conversions.
+        if (topic == "LENGTH")   return ConversionArithmetic(1000, "m", "km");
+        if (topic == "MASS")     return ConversionArithmetic(1000, "g",  "kg");
+        if (topic.StartsWith("VOLUME")) return ConversionArithmetic(1000, "mL", "L");
+        if (topic == "TIME")     return ConversionArithmetic(60,   "s",  "min");
+        if (topic == "AREA")     return ConversionArithmetic(10000,"cm²","m²");
+        if (topic == "SPEED")    return ConversionArithmetic(36,   "km/h","m/s (×10)");
+        if (topic == "PRESSURE") return ConversionArithmetic(1000, "Pa", "kPa");
+        if (topic == "ENERGY")   return ConversionArithmetic(1000, "J",  "kJ");
+
+        // ── Temperature ───────────────────────────────────────────────────────
+        if (topic == "TEMPERATURE") return TemperatureQuestion();
+
+        // ── Fallback — treat as mixed multiplication ──────────────────────────
+        return SimpleMul(2, 12, 2, 12, "Medium");
+    }
+
+    // ── Practice-This helpers ─────────────────────────────────────────────────
+
+    /// <summary>Generates a multiplication or division question for table N.</summary>
+    private Question TableQuestion(int n)
+    {
+        bool divide = Random.value < 0.4f; // 40 % chance of asking as division
+
+        if (divide)
+        {
+            int q     = Random.Range(1, 11);
+            int a     = n * q;
+            int score = ComputeDiffScore(1);
+            float time = ComputeDynamicTime(score, "Division");
+            return new Question($"{a} ÷ {n}", q, "Easy", score,
+                new List<string> { "Division", $"table_{n}" }, time);
+        }
+        else
+        {
+            int b     = Random.Range(1, 11);
+            bool hardFactor = n >= 7 || b >= 7;
+            int score = ComputeDiffScore(hardFactor ? 1 : 0);
+            float time = ComputeDynamicTime(score, "Multiplication");
+            return new Question($"{n} × {b}", n * b, "Easy", score,
+                new List<string> { "Multiplication", $"table_{n}" }, time);
+        }
+    }
+
+    /// <summary>
+    /// Generates a simple arithmetic question that reflects unit conversion ratios.
+    /// e.g. for LENGTH: "3 500 m → __ km?" (answer: 3.5)
+    /// </summary>
+    private Question ConversionArithmetic(int ratio, string fromUnit, string toUnit)
+    {
+        bool multiply = Random.value < 0.5f;
+        int score     = ComputeDiffScore(1);
+        float time    = ComputeDynamicTime(score, "Division");
+
+        if (multiply)
+        {
+            // How many fromUnit in N toUnit?
+            int n   = Random.Range(1, 11);
+            int ans = n * ratio;
+            return new Question($"{n} {toUnit} → {fromUnit}?", ans, "Medium", score,
+                new List<string> { "Multiplication", "conversion" }, time);
+        }
+        else
+        {
+            // Convert N*ratio fromUnit to toUnit
+            int n   = Random.Range(1, 11);
+            int val = n * ratio;
+            return new Question($"{val} {fromUnit} → {toUnit}?", n, "Medium", score,
+                new List<string> { "Division", "conversion" }, time);
+        }
+    }
+
+    /// <summary>Celsius ↔ Kelvin offset questions (simple addition/subtraction).</summary>
+    private Question TemperatureQuestion()
+    {
+        bool toKelvin = Random.value < 0.5f;
+        int  celsius  = Random.Range(-50, 101);
+        int  score    = ComputeDiffScore(0);
+        float time    = ComputeDynamicTime(score, "Addition");
+
+        if (toKelvin)
+            return new Question($"{celsius}°C → K?", celsius + 273, "Medium", score,
+                new List<string> { "Addition", "temperature" }, time);
+        else
+        {
+            int kelvin = celsius + 273;
+            return new Question($"{kelvin} K → °C?", celsius, "Medium", score,
+                new List<string> { "Subtraction", "temperature" }, time);
+        }
+    }
+
+    /// <summary>
+    /// Parses a range string like "1–10" or "11-20". Falls back to defaults on failure.
+    /// </summary>
+    private static void ParseRange(string s, int defaultLo, int defaultHi,
+                                   out int lo, out int hi)
+    {
+        lo = defaultLo;
+        hi = defaultHi;
+        if (string.IsNullOrEmpty(s)) return;
+
+        // Accept both '–' (en-dash) and '-' (hyphen)
+        string normalized = s.Replace("–", "-").Replace("—", "-");
+        var parts = normalized.Split('-');
+        if (parts.Length == 2 &&
+            int.TryParse(parts[0].Trim(), out int a) &&
+            int.TryParse(parts[1].Trim(), out int b))
+        {
+            lo = a;
+            hi = b;
+        }
     }
 
     private void TrackOp(Question q)
@@ -461,94 +665,46 @@ public class QuestionGenerator : MonoBehaviour
     };
 
     // ==========================================================================
-    //  Difficulty Score  (1–5, mental effort)
+    //  Difficulty Score
     // ==========================================================================
 
-    /// <summary>
-    /// Base = 1.  Bonuses are additive:
-    ///   +1  carry required
-    ///   +1  borrow required
-    ///   +1  multiplication involves 7–9
-    ///   +1  division (inherently harder — always passed explicitly)
-    ///   +2  fraction with different denominators
-    /// Result clamped to 1–5.
-    /// </summary>
     private static int ComputeDiffScore(int bonuses) => Mathf.Clamp(1 + bonuses, 1, 5);
 
     // ==========================================================================
-    //  Dynamic Time Allocation  — THE CORE OF THIS UPGRADE
+    //  Dynamic Time Allocation
     // ==========================================================================
 
-    // Static baseline midpoints per difficulty score (seconds).
-    // Shape: score 1 → ~2.5 s, score 5 → ~10.5 s.
-    // Used as the fallback when no user data exists and as the structural anchor
-    // that prevents user data from distorting timing beyond reasonable bounds.
     private static readonly (float min, float max)[] BaseTimeRange =
     {
-        (0f,  0f),   // index 0 — unused
-        (2f,  3f),   // score 1
-        (3f,  5f),   // score 2
-        (5f,  7f),   // score 3
-        (7f,  9f),   // score 4
-        (9f, 12f),   // score 5
+        (0f,  0f),
+        (2f,  3f),
+        (3f,  5f),
+        (5f,  7f),
+        (7f,  9f),
+        (9f, 12f),
     };
 
-    /// <summary>
-    /// Computes allotted time by blending two signals:
-    ///
-    ///   A) Static baseline  — midpoint of the difficulty-score band.
-    ///      Always present; acts as structural floor/ceiling.
-    ///
-    ///   B) User-measured time — user's EMA of correct solve times for this
-    ///      operation type × <see cref="solveTimeBuffer"/> (comfortable headroom).
-    ///
-    /// Blend weight =  <see cref="userTimingWeight"/>  ×  trustLevel,
-    /// where trustLevel ramps 0 → 1 as correct samples accumulate (3–10).
-    /// This prevents noisy early data from warping the clock too soon.
-    ///
-    /// Guardrails:
-    ///   • Result is clamped within [bandMin × 0.8, bandMax × 1.2] so user data
-    ///     can nudge but never escape the difficulty band entirely.
-    ///   • Absolute limits: 2 s – 12 s.
-    ///   • Rounded to 0.5 s increments for a clean timer display.
-    /// </summary>
     private float ComputeDynamicTime(int score, string primaryTag)
     {
-        // ── A: Static baseline ────────────────────────────────────────────────
         int si = Mathf.Clamp(score, 1, 5);
         var (bMin, bMax) = BaseTimeRange[si];
         float staticMid  = (bMin + bMax) * 0.5f;
 
-        // ── B: User-measured time (correct-answers only) ──────────────────────
-        float userTime   = staticMid; // default until trusted data exists
+        float userTime   = staticMid;
         float trustLevel = 0f;
 
         if (!string.IsNullOrEmpty(primaryTag) &&
             _tagPerf.TryGetValue(primaryTag, out var perf) &&
             perf.HasTrustedTime)
         {
-            // avgCorrectSolveTime is raw seconds the user actually needed.
-            // Multiply by buffer so the deadline is achievable but still pressures.
-            userTime = perf.avgCorrectSolveTime * solveTimeBuffer;
-
-            // Trust scales from 0 at 3 samples to 1 at 10 samples.
-            // Below 3 we don't use user data at all (HasTrustedTime guards this).
+            userTime   = perf.avgCorrectSolveTime * solveTimeBuffer;
             trustLevel = Mathf.Clamp01((perf.correctCount - 3f) / 7f);
         }
 
-        // ── Blend ─────────────────────────────────────────────────────────────
         float effectiveWeight = userTimingWeight * trustLevel;
         float blended         = Mathf.Lerp(staticMid, userTime, effectiveWeight);
-
-        // ── Soft band clamping ────────────────────────────────────────────────
-        // User data may push UP to 20 % beyond band max (slow learners get mercy).
-        // User data may pull DOWN to 80 % of band min (fast learners stay challenged).
-        float clamped = Mathf.Clamp(blended, bMin * 0.8f, bMax * 1.2f);
-
-        // ── Hard global limits ────────────────────────────────────────────────
-        clamped = Mathf.Clamp(clamped, 2f, 12f);
-
-        // ── Round to 0.5 s increments ─────────────────────────────────────────
+        float clamped         = Mathf.Clamp(blended, bMin * 0.8f, bMax * 1.2f);
+        clamped               = Mathf.Clamp(clamped, 2f, 12f);
         return Mathf.Round(clamped * 2f) / 2f;
     }
 
@@ -586,7 +742,7 @@ public class QuestionGenerator : MonoBehaviour
     private Question SimpleMul(int aMin, int aMax, int bMin, int bMax, string diff)
     {
         int  a          = Mathf.Clamp(Random.Range(aMin, aMax + 1), aMin, 99);
-        int  b          = Mathf.Clamp(Random.Range(bMin, bMax + 1), bMin, 9); // 2-digit × 1-digit
+        int  b          = Mathf.Clamp(Random.Range(bMin, bMax + 1), bMin, 9);
         bool hardFactor = a >= 7 || b >= 7;
         int  score      = ComputeDiffScore(hardFactor ? 1 : 0);
         float time      = ComputeDynamicTime(score, "Multiplication");
@@ -602,7 +758,6 @@ public class QuestionGenerator : MonoBehaviour
         int   b     = Random.Range(bMin, bMax + 1);
         int   q     = Random.Range(qMin, qMax + 1);
         int   a     = b * q;
-        // Division is structurally harder — always starts at score 2 (+1 bonus)
         int   score = ComputeDiffScore(1);
         float time  = ComputeDynamicTime(score, "Division");
 
@@ -635,7 +790,7 @@ public class QuestionGenerator : MonoBehaviour
     private Question NegativeResult()
     {
         int a     = Random.Range(1, 20), b = Random.Range(a + 1, a + 15);
-        int score = ComputeDiffScore(1); // crossing zero = bonus
+        int score = ComputeDiffScore(1);
         return new Question($"{a} - {b}", a - b, "Hard", score,
             new List<string> { "Integers", "basic_subtraction" },
             ComputeDynamicTime(score, "Integers"));
@@ -657,7 +812,7 @@ public class QuestionGenerator : MonoBehaviour
         float b    = Mathf.Round(Random.Range(1f, 8f)  * 4f) / 4f;
         bool  add  = Random.value < 0.5f;
         float ans  = Mathf.Round((add ? a + b : a - b) * 100f) / 100f;
-        int   score = ComputeDiffScore(1); // decimals always bump up
+        int   score = ComputeDiffScore(1);
         float time  = ComputeDynamicTime(score, "Decimals");
 
         return new Question($"{a} {(add ? "+" : "-")} {b}", ans, diff, score,
@@ -675,7 +830,7 @@ public class QuestionGenerator : MonoBehaviour
 
         float ans   = Mathf.Round((add ? (float)(nA + nB) / denom
                                        : (float)(nA - nB) / denom) * 1000f) / 1000f;
-        int   score = ComputeDiffScore(1); // fractions: base +1
+        int   score = ComputeDiffScore(1);
         float time  = ComputeDynamicTime(score, "Fractions");
 
         return MakeFracQ(nA, denom, nB, denom, add ? "+" : "-", ans, tier, score,
@@ -691,7 +846,7 @@ public class QuestionGenerator : MonoBehaviour
         float fa  = (float)nA / dA, fb = (float)nB / dB;
         float ans = Mathf.Round((add ? fa + fb : fa - fb) * 1000f) / 1000f;
 
-        int   score = ComputeDiffScore(2); // different denominator = +2
+        int   score = ComputeDiffScore(2);
         float time  = ComputeDynamicTime(score, "Fractions");
 
         return MakeFracQ(nA, dA, nB, dB, add ? "+" : "-", ans, tier, score,
