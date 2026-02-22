@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: df1d5b74e3130c649a152737c3b3b468, type: 3}
+  m_Name: ToastSettings
+  m_EditorClassIdentifier: 
+  successIcon: {fileID: 891999829, guid: 2031026a6d38e92438beb4ce02e2c73b, type: 3}
+  errorIcon: {fileID: -1094527104, guid: eb396629b3b71ce4582e8242998b3387, type: 3}
+  warningIcon: {fileID: 1209767718, guid: 0094532960409ee439c3ed4fd446b594, type: 3}
+  notifyIcon: {fileID: -1846868970, guid: 55db9a9ef96e9cf49bf10963581f3789, type: 3}
+  successIconColor: {r: 0.18, g: 0.8, b: 0.44, a: 1}
+  errorIconColor: {r: 0.91, g: 0.3, b: 0.24, a: 1}
+  warningIconColor: {r: 0.95, g: 0.77, b: 0.06, a: 1}
+  notifyIconColor: {r: 0.2, g: 0.6, b: 1, a: 1}
+  coloredText: 0
+  successTextColor: {r: 0.18, g: 0.8, b: 0.44, a: 1}
+  errorTextColor: {r: 0.91, g: 0.3, b: 0.24, a: 1}
+  warningTextColor: {r: 0.95, g: 0.77, b: 0.06, a: 1}
+  notifyTextColor: {r: 0.2, g: 0.6, b: 1, a: 1}
+  enterAnimation: 0
+  exitAnimation: 0
