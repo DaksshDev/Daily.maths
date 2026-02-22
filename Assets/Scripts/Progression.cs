@@ -100,10 +100,45 @@ public class Progression : MonoBehaviour
             progressText.text = coinsToNext + " coins, " + xpToNext + " xp to next level";
 
         if (progressSlider != null)
-            progressSlider.value = progressPercent;
+        {
+            progressSlider.minValue = 0f;
+            progressSlider.maxValue = 1f;
+            progressSlider.value    = progressPercent;
+        }
 
         if (percentText != null)
             percentText.text = Mathf.RoundToInt(progressPercent * 100f) + "%";
+    }
+    
+    /// <summary>
+    /// Zeroes out all progression UI. Called before a refresh so stale
+    /// numbers don't linger while new data loads.
+    /// </summary>
+    public void ResetDisplay()
+    {
+        currentLevel    = 0;
+        coinsToNext     = 0;
+        xpToNext        = 0;
+        progressPercent = 0f;
+
+        if (levelText != null)
+        {
+            levelText.text  = "Level 0";
+            levelText.color = defaultColor;
+        }
+
+        if (progressText != null)
+            progressText.text = "— coins, — xp to next level";
+
+        if (progressSlider != null)
+        {
+            progressSlider.minValue = 0f;
+            progressSlider.maxValue = 1f;
+            progressSlider.value    = 0f;
+        }
+
+        if (percentText != null)
+            percentText.text = "0%";
     }
 
     public void OnProgressChanged() => CalculateLevel();

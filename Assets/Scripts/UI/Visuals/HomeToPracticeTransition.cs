@@ -11,6 +11,14 @@ public class HomeToPracticeTransition : MonoBehaviour
     public GameManager gameManager;
     private bool animating = false;
 
+    private Vector2 DEFAULT_homePos;
+    private RectTransform home;
+
+    void Awake()
+    {
+        home = HomeScreen.GetComponent<RectTransform>();
+        DEFAULT_homePos = home.anchoredPosition;
+    }
     void Start()
     {
         if (GameScreen != null && GameScreen.activeSelf)
@@ -41,5 +49,18 @@ public class HomeToPracticeTransition : MonoBehaviour
         HomeScreen.gameObject.SetActive(false);
         animating = false;
         gameManager.StartGame();
+        StartCoroutine(ResetSlide());
+    }
+
+    private IEnumerator ResetSlide()
+    {
+        yield return new WaitForSeconds(0.5f);
+        home.anchoredPosition = DEFAULT_homePos;
+    }
+
+    public void CloseGameScreen()
+    {
+        GameScreen.SetActive(false);
+        HomeScreen.gameObject.SetActive(true);
     }
 }

@@ -12,6 +12,9 @@ public class PullToRefresh : MonoBehaviour
     public GameObject spinner;
     public GameObject refreshText; // NEW: Reference to refresh text
     
+    [Header("Events")]
+    public UnityEngine.Events.UnityEvent OnRefresh;
+    
     [Header("Position Range")]
     private float minY = -500f;
     private float maxY = -300;
@@ -182,6 +185,6 @@ public class PullToRefresh : MonoBehaviour
     
     void RefreshScene()
     {
-        //TOADD: Add your reload/refresh logic here
+        OnRefresh?.Invoke();
     }
 }

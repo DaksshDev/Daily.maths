@@ -11,6 +11,11 @@ public class KeyPadInput : MonoBehaviour
     public GameObject keypadParent;
     public TMP_Text displayText;
 
+    // When locked, all key presses are silently ignored.
+    // GameManager locks the pad when the timer hits 0 and unlocks it
+    // when the next question is fully loaded.
+    private bool _locked = false;
+
     void Start()
     {
         string[] keyNames = { "1","2","3","4","5","6","7","8","9","0","delete","upon","point","negative" };
@@ -28,8 +33,30 @@ public class KeyPadInput : MonoBehaviour
         }
     }
 
+    // ── Lock control ──────────────────────────────────────────────────────────
+
+    /// <summary>Lock or unlock the keypad. While locked, input is ignored.</summary>
+    public void SetLocked(bool locked)
+    {
+        _locked = locked;
+    }
+
+    /// <summary>
+    /// Immediately wipe the display text regardless of lock state.
+    /// Called by AnswerChecker.ForceHardClearInput() on timer expiry.
+    /// </summary>
+    public void ForceClearDisplay()
+    {
+        if (displayText != null)
+            displayText.text = "";
+    }
+
+    // ── Key handling ──────────────────────────────────────────────────────────
+
     void HandleKey(string key)
     {
+        if (_locked) return;  // ← drop late taps silently
+
         switch (key)
         {
             case "delete":

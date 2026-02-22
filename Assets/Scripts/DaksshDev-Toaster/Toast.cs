@@ -30,6 +30,9 @@ namespace DaksshDev.Toaster
         private float _elapsed;
         private bool  _dismissing;
 
+        // Cached so swipe direction can match exit anim
+        private ExitAnimation _exitAnimation;
+
         // Running stack-reposition coroutine — interrupted on each new call
         private Coroutine _stackAnimCoroutine;
 
@@ -51,8 +54,9 @@ namespace DaksshDev.Toaster
                                ToastSettings settings, ToastConfig config,
                                ToastManager manager)
         {
-            _duration = duration;
-            _manager  = manager;
+            _duration      = duration;
+            _manager       = manager;
+            _exitAnimation = settings.exitAnimation; // cache for swipe
 
             messageText.text = message;
 
@@ -119,10 +123,6 @@ namespace DaksshDev.Toaster
 
         // ── Stack animation ───────────────────────────────────────────────────
 
-        /// <summary>
-        /// Called by ToastManager to animate this toast to its slot in the stack.
-        /// isfront = true means this is the newest, fully-visible toast.
-        /// </summary>
         public void AnimateTo(float targetY, float targetScale, float targetAlpha, bool isFront)
         {
             if (_stackAnimCoroutine != null)
@@ -146,24 +146,19 @@ namespace DaksshDev.Toaster
                 t += Time.deltaTime / StackAnimDuration;
                 float e = EaseOutCubic(t);
 
-                // Y position
                 Vector2 pos = _rectTransform.anchoredPosition;
                 pos.y = Mathf.Lerp(startY, targetY, e);
                 _rectTransform.anchoredPosition = pos;
 
-                // Uniform scale
                 float s = Mathf.Lerp(startScale, targetScale, e);
                 _rectTransform.localScale = new Vector3(s, s, 1f);
 
-                // Alpha — front toast is always full alpha during enter anim,
-                // background toasts fade to their target
                 if (!isFront)
                     _canvasGroup.alpha = Mathf.Lerp(startAlpha, targetAlpha, e);
 
                 yield return null;
             }
 
-            // Snap to exact values
             Vector2 finalPos = _rectTransform.anchoredPosition;
             finalPos.y = targetY;
             _rectTransform.anchoredPosition = finalPos;
@@ -182,6 +177,40 @@ namespace DaksshDev.Toaster
 
         // ── Swipe to dismiss ──────────────────────────────────────────────────
 
+        // Returns the drag delta axis and sign that matches the exit animation.
+        // x > 0 → swipe right, x < 0 → swipe left, y < 0 → swipe down, etc.
+        private Vector2 GetSwipeDelta(Vector2 dragDelta)
+        {
+            switch (_exitAnimation)
+            {
+                case ExitAnimation.SlideToLeft:  return new Vector2(Mathf.Min(dragDelta.x, 0f), 0f); // only left counts
+                case ExitAnimation.SlideToRight: return new Vector2(Mathf.Max(dragDelta.x, 0f), 0f); // only right counts
+                case ExitAnimation.FadeOut:
+                case ExitAnimation.PopOut:
+                default:
+                    return dragDelta; // any direction works for non-directional exits
+            }
+        }
+
+        // How far the user has dragged in the meaningful direction (0–1)
+        private float GetSwipeProgress(Vector2 dragDelta)
+        {
+            switch (_exitAnimation)
+            {
+                case ExitAnimation.SlideToLeft:  return Mathf.Clamp01(-dragDelta.x / SwipeDismissThreshold);
+                case ExitAnimation.SlideToRight: return Mathf.Clamp01( dragDelta.x / SwipeDismissThreshold);
+                case ExitAnimation.FadeOut:
+                case ExitAnimation.PopOut:
+                default:
+                    return Mathf.Clamp01(dragDelta.magnitude / SwipeDismissThreshold);
+            }
+        }
+
+        private bool ShouldDismissOnRelease(Vector2 dragDelta)
+        {
+            return GetSwipeProgress(dragDelta) >= 1f;
+        }
+
         public void OnBeginDrag(PointerEventData eventData)
         {
             _dragStartPos       = eventData.position;
@@ -190,17 +219,22 @@ namespace DaksshDev.Toaster
 
         public void OnDrag(PointerEventData eventData)
         {
-            float deltaX = eventData.position.x - _dragStartPos.x;
-            _rectTransform.anchoredPosition = _initialAnchoredPos + new Vector2(deltaX, 0f);
-            float progress = Mathf.Clamp01(Mathf.Abs(deltaX) / SwipeDismissThreshold);
+            Vector2 rawDelta    = (Vector2)eventData.position - _dragStartPos;
+            Vector2 swipeDelta  = GetSwipeDelta(rawDelta);
+            float   progress    = GetSwipeProgress(rawDelta);
+
+            _rectTransform.anchoredPosition = _initialAnchoredPos + swipeDelta;
             _canvasGroup.alpha = 1f - (progress * 0.4f);
         }
 
         public void OnEndDrag(PointerEventData eventData)
         {
-            float deltaX = eventData.position.x - _dragStartPos.x;
-            if (Mathf.Abs(deltaX) >= SwipeDismissThreshold)
+            Vector2 rawDelta = (Vector2)eventData.position - _dragStartPos;
+
+            if (ShouldDismissOnRelease(rawDelta))
+            {
                 Dismiss();
+            }
             else
             {
                 _rectTransform.anchoredPosition = _initialAnchoredPos;

@@ -16,6 +16,10 @@ public class GameManager : MonoBehaviour
     public Progression       progression;
     public HomeScreenMgr     homeScreenMgr;
     public VFXManager        vfxManager;
+    public KeyPadInput       keyPadInput;
+
+    [Header("Transition")]
+    public HomeToPracticeTransition transition; // ← assign in Inspector
 
     [Header("Question Card")]
     public RectTransform questionCard;
@@ -43,6 +47,10 @@ public class GameManager : MonoBehaviour
     public TMP_Text   gainedCoinsText;
     public GameObject rateUsObject;
 
+    [Header("Progress Bar (optional)")]
+    [Tooltip("Assign a UnityEngine.UI.Slider or leave null to skip")]
+    public UnityEngine.UI.Slider progressBar;
+
     [Header("Timing")]
     [Tooltip("Seconds to wait after a correct answer before sliding to the next question — gives EarnAnim time to play")]
     public float correctAnswerDelay = 1.5f;
@@ -59,9 +67,11 @@ public class GameManager : MonoBehaviour
     private float          cardStartX;
     private bool           animating;
     private bool           isDaily;
-    private int            _lastSkipCount;
 
     private float _questionStartTime;
+
+    /// <summary>Fired every time a question is loaded. (questionsCompleted, totalQuestions)</summary>
+    public System.Action<int, int> OnProgressUpdated;
 
     // ==========================================================================
     //  Unity Lifecycle
@@ -79,7 +89,6 @@ public class GameManager : MonoBehaviour
         if (fractionQuestionParent != null)
             fractionQuestionParent.gameObject.SetActive(false);
 
-        // ── Daily / install tracking ──────────────────────────────────────────
         string lastPlayed = PlayerPrefs.GetString("LastPlayed", "");
         string today      = System.DateTime.Now.ToString("yyyy-MM-dd");
         isDaily = lastPlayed != today;
@@ -93,7 +102,6 @@ public class GameManager : MonoBehaviour
 
         int userIQ = PlayerPrefs.GetInt("UserIQ", 5);
 
-        // ── Init generator + generate set ────────────────────────────────────
         questionGenerator.Init(daysSinceInstall, userIQ);
         questions = questionGenerator.GenerateQuestions(20);
 
@@ -103,6 +111,32 @@ public class GameManager : MonoBehaviour
 
         answerChecker.OnAnswerResult += OnAnswerResult;
         questionTimer.OnTimeUp        = OnTimeUp;
+
+        if (progressBar != null)
+        {
+            progressBar.minValue = 0;
+            progressBar.maxValue = questions.Count;
+            progressBar.value    = 0;
+        }
+    }
+
+    // ==========================================================================
+    //  Progress
+    // ==========================================================================
+
+    public (int completed, int total) GetProgress() =>
+        (Mathf.Max(currentIndex, 0), questions != null ? questions.Count : 20);
+
+    private void NotifyProgress(int index)
+    {
+        int total = questions.Count;
+        OnProgressUpdated?.Invoke(index, total);
+
+        if (progressBar != null)
+            progressBar.value = index;
+
+        if (countText != null)
+            countText.text = $"{index + 1}/{total}";
     }
 
     // ==========================================================================
@@ -137,17 +171,46 @@ public class GameManager : MonoBehaviour
         answerChecker.CurrentTags   = q.tags;
         answerChecker.ClearInput();
 
-        UpdateCountText(currentIndex);
+        if (keyPadInput != null) keyPadInput.SetLocked(false);
+
+        NotifyProgress(currentIndex);
         scoreManager.RegisterAttempt();
 
         _questionStartTime = Time.time;
         questionTimer.StartTimer(q.timeAlloted);
     }
 
-    private void UpdateCountText(int index)
+    // ==========================================================================
+    //  Exit Mid-Game
+    // ==========================================================================
+
+    /// <summary>
+    /// Call from a pause/back button. Stops the session without rewarding anything
+    /// (incomplete run = no XP or coins), then returns to the home screen.
+    /// </summary>
+    public void ExitGame()
     {
-        if (countText != null)
-            countText.text = $"{index + 1}/{questions.Count}";
+        // Stop timer and block any stray keypad taps
+        questionTimer.StopTimer();
+        if (keyPadInput != null) keyPadInput.SetLocked(true);
+
+        // Kill slide/feedback coroutines so nothing fires after we leave
+        StopAllCoroutines();
+
+        // Wipe session — intentionally not committing XP/coins
+        scoreManager.ResetSession();
+        answerChecker.ResetStats();
+
+        // Hide all in-game UI
+        if (gameContainer   != null) gameContainer.SetActive(false);
+        if (questionCard    != null) questionCard.gameObject.SetActive(false);
+        if (completedScreen != null) completedScreen.SetActive(false);
+
+        // Return to home screen
+        if (transition != null)
+            transition.CloseGameScreen();
+        else
+            Debug.LogWarning("[GameManager] ExitGame: HomeToPracticeTransition not assigned.");
     }
 
     // ==========================================================================
@@ -223,6 +286,8 @@ public class GameManager : MonoBehaviour
     {
         questionTimer.StopTimer();
 
+        if (keyPadInput != null) keyPadInput.SetLocked(true);
+
         float elapsed  = Time.time - _questionStartTime;
         float allotted = questions[currentIndex].timeAlloted;
 
@@ -254,18 +319,16 @@ public class GameManager : MonoBehaviour
 
     private void OnTimeUp()
     {
-        answerChecker.TrySubmitOrSkip();
+        if (keyPadInput != null) keyPadInput.SetLocked(true);
+        answerChecker.TrySubmitOrSkip();       // read + validate + clear answerInput
+        if (keyPadInput != null) keyPadInput.ForceClearDisplay(); // wipe keypad UI
     }
-
-    // ── Correct: wait then slide ──────────────────────────────────────────────
 
     private IEnumerator SlideAfterDelay(float delay)
     {
         yield return new WaitForSecondsRealtime(delay);
         SlideToNext();
     }
-
-    // ── Wrong / skip: brief pause then slide ─────────────────────────────────
 
     private IEnumerator ShowFeedbackThenSlide()
     {
@@ -312,6 +375,9 @@ public class GameManager : MonoBehaviour
         DisplayQuestion(q);
         answerChecker.CurrentAnswer = q.answer;
         answerChecker.CurrentTags   = q.tags;
+        answerChecker.ClearInput();
+
+        if (keyPadInput != null) keyPadInput.SetLocked(false);
 
         questionCard.anchoredPosition = new Vector2(startPos.x + 800f, startPos.y);
 
@@ -328,7 +394,7 @@ public class GameManager : MonoBehaviour
         animating = false;
 
         currentIndex = nextIndex;
-        UpdateCountText(currentIndex);
+        NotifyProgress(currentIndex);
         scoreManager.RegisterAttempt();
 
         _questionStartTime = Time.time;
@@ -353,15 +419,15 @@ public class GameManager : MonoBehaviour
 
         answerChecker.SaveWeaknessToPrefs();
 
-        // ── Commit score through the service ──────────────────────────────────
+        // XP & Coins committed ONLY on full completion
         int gainedXP    = scoreManager.GetSessionXP();
         int gainedCoins = scoreManager.GetSessionCoins();
         UserDataService.Instance?.CommitSessionScore(gainedXP, gainedCoins);
 
         if (isDaily) CompleteToday();
+
         if (progression != null) progression.OnProgressChanged();
 
-        // ── UI ────────────────────────────────────────────────────────────────
         if (gameContainer != null) gameContainer.SetActive(false);
         questionCard.gameObject.SetActive(false);
         completedScreen.SetActive(true);
@@ -384,6 +450,8 @@ public class GameManager : MonoBehaviour
 
         attemptInfoText.text =
             $"<color=#30FF39>Correct: {c}/{total}</color>\n" + skipLine;
+
+        if (progressBar != null) progressBar.value = progressBar.maxValue;
 
         if (vfxManager != null && c >= goodResultThreshold)
             vfxManager.ShowGoodResult();

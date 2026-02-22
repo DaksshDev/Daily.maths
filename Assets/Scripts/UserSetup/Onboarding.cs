@@ -30,7 +30,6 @@ public class Onboarding : MonoBehaviour
         if (IsOnboarded)
         {
             if (onboarding != null) onboarding.SetActive(false);
-            if (home       != null) home.SetActive(true);
             UserDataService.Instance?.FetchUserData();
         }
     }

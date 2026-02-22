@@ -14,6 +14,8 @@ public class UserDataService : MonoBehaviour
     [System.Serializable] public class UserDataEvent : UnityEvent<UserDataPayload> {}
 
     [Header("Events")]
+    public float RefreshDelay = 0.4f;
+    [Space]
     public UserDataEvent OnUserDataLoaded;
     public UnityEvent    OnUserDataSaved;
     public UnityEvent    OnOfflineLoad;
@@ -124,6 +126,38 @@ public class UserDataService : MonoBehaviour
 
         OnUserDataSaved?.Invoke();
         FireUserDataEvent();
+    }
+    
+    // ── Refresh ───────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Hides home screen UI, waits 0.5s, re-fetches PlayerPrefs, then restores.
+    /// Call this after any save that should visually "refresh" the home screen.
+    /// </summary>
+    public void RefreshHomeScreen(HomeScreenMgr homeScreenMgr, Progression progression)
+    {
+        if (homeScreenMgr == null && progression == null) return;
+        StartCoroutine(RefreshHomeScreenRoutine(homeScreenMgr, progression));
+    }
+
+    private System.Collections.IEnumerator RefreshHomeScreenRoutine(
+        HomeScreenMgr homeScreenMgr, Progression progression)
+    {
+        // 1. Hide + blank everything
+        homeScreenMgr?.SetDisplayVisible(false);
+        progression?.ResetDisplay();
+
+        // 2. Re-fetch clean data in the background (no event fire yet)
+        LoadFromPlayerPrefs();        // reloads all cached fields
+        DataLoaded = false;           // suppress auto-broadcast mid-reset
+
+        yield return new WaitForSeconds(RefreshDelay);
+
+        // 3. Re-enable and push fresh data
+        DataLoaded = true;
+        homeScreenMgr?.SetDisplayVisible(true);
+        progression?.CalculateLevel();   // recalcs + updates its own UI
+        FireUserDataEvent();             // pushes username/streak/coins/xp to listeners
     }
 
     /// <summary>Wipe all PlayerPrefs and reset cached state.</summary>

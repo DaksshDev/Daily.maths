@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "510604964316",
+    "project_id": "dailymaths-34dd9",
+    "storage_bucket": "dailymaths-34dd9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:510604964316:android:888041a7a69cd3f384df19",
+        "android_client_info": {
+          "package_name": "com.DaksshDev.DailyMaths"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "510604964316-5tuirdml1lb6p5qlcqsqnhh008kcb6ue.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDFQxjRnImThQk24mhtDI08CnFbyD3ISPo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "510604964316-5tuirdml1lb6p5qlcqsqnhh008kcb6ue.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

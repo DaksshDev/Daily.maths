@@ -12,7 +12,9 @@ public class HomeScreenMgr : MonoBehaviour
     public TMP_Text  coinsText;
     public TMP_Text  xpText;
     public UserEdit  settings;
+    [SerializeField] private Progression progression; 
 
+    
     void Start()
     {
         // Listen to the service — fires whenever data loads
@@ -55,6 +57,39 @@ public class HomeScreenMgr : MonoBehaviour
         if (days >= 30)  return (days / 30)  + "M streak";
         if (days >= 7)   return (days / 7)   + "w streak";
         return days + "d streak";
+    }
+    
+    /// <summary>
+    /// Hides or shows all home screen text elements.
+    /// When hiding, blanks text to avoid stale values flashing on restore.
+    /// </summary>
+    public void SetDisplayVisible(bool visible)
+    {
+        // Greeting
+        if (userGreetScript != null)
+            userGreetScript.greetingText.gameObject.SetActive(visible);
+
+        // Stats
+        if (streakText != null)
+        {
+            streakText.gameObject.SetActive(visible);
+            if (!visible) streakText.text = "";
+        }
+        if (coinsText != null)
+        {
+            coinsText.gameObject.SetActive(visible);
+            if (!visible) coinsText.text = "";
+        }
+        if (xpText != null)
+        {
+            xpText.gameObject.SetActive(visible);
+            if (!visible) xpText.text = "";
+        }
+    }
+    
+    public void TriggerFullRefresh()
+    {
+        UserDataService.Instance?.RefreshHomeScreen(this, progression);
     }
 
     // Kept for Progression.cs compatibility

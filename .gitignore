@@ -94,17 +94,8 @@ InitTestScene*.unity*
 /[Aa]ssets/Unity.VisualScripting.Generated/VisualScripting.Flow/UnitOptions.db.meta
 /[Aa]ssets/Unity.VisualScripting.Generated/VisualScripting.Core/Property Providers
 /[Aa]ssets/Unity.VisualScripting.Generated/VisualScripting.Core/Property Providers.meta
-Assets/Online/Firebase/Plugins/x86_64/
-Assets/google-services.json
-Assets/google-services.json.meta
-Assets/Online/Firebase/
-Assets/StreamingAssets
-Assets/ExternalDependencyManager/
-Assets/Plugins/Android/FirebaseApp.androidlib/
-Assets/Online/Firebase/m2repository/
-google-services.json
-google-services-desktop.json
-google-services.xml
+.plastic/
+.idea/
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*

@@ -15,17 +15,20 @@ public class AnswerChecker : MonoBehaviour
 
     [Header("Answer Input")]
     public TMP_Text answerInput;
-    public Button submitButton;
+    public Button   submitButton;
 
     [Header("VFX")]
     public VFXManager vfxManager;
+
+    [Header("References")]
+    [Tooltip("Assign the KeyPadInput component so we can hard-clear its display on timer expiry")]
+    public KeyPadInput keyPadInput;
 
     private int correct;
     private int wrong;
     private int skipped;
 
     private Dictionary<string, int> weaknessTally = new Dictionary<string, int>();
-    private float _submitTime;
 
     public System.Action<bool> OnAnswerResult;
 
@@ -44,10 +47,23 @@ public class AnswerChecker : MonoBehaviour
         UpdateUI();
     }
 
+    /// <summary>Soft clear — wipes the answerInput text.</summary>
     public void ClearInput()
     {
         if (answerInput != null)
             answerInput.text = "";
+    }
+
+    /// <summary>
+    /// Hard clear — also nukes the KeyPadInput display directly.
+    /// Call this when the timer hits 0 to prevent residual characters
+    /// from a frantic keypad tap appearing in the next question.
+    /// </summary>
+    public void ForceHardClearInput()
+    {
+        ClearInput();
+        if (keyPadInput != null)
+            keyPadInput.ForceClearDisplay();
     }
 
     // ── Input Parsing ─────────────────────────────────────────────────────────
@@ -97,7 +113,6 @@ public class AnswerChecker : MonoBehaviour
         }
 
         bool isCorrect = IsCorrect(userAnswer, CurrentAnswer);
-        _submitTime    = Time.time;
 
         ClearInput();
 
@@ -132,14 +147,10 @@ public class AnswerChecker : MonoBehaviour
                     correct++;
                     UpdateUI();
                     OnAnswerResult?.Invoke(true);
-                    // Correct VFX handled in GameManager.OnAnswerResult
                     return;
                 }
                 else
                 {
-                    // Wrong partial answer on time-up: fire WrongAnswer only,
-                    // then skip the counter — but suppress SkipQuestion VFX so
-                    // both effects don't fire at the same time.
                     wrong++;
                     TallyWeakness();
                     if (vfxManager != null) vfxManager.WrongAnswer();
@@ -149,7 +160,8 @@ public class AnswerChecker : MonoBehaviour
             }
         }
 
-        // No input at all — pure skip
+        // No (valid) input — pure skip
+        ClearInput(); // ensure clean state even if unparseable text was present
         RegisterSkip(playVFX: true);
     }
 

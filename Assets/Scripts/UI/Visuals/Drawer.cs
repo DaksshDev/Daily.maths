@@ -120,17 +120,24 @@ public class Drawer : MonoBehaviour
 
     public void CloseDrawer()
     {
-        Vector2 pos = snapPositions[1];
-        SetDrawerPosition(-800f);
+        if (snapPositions == null || snapPositions.Length == 0)
+        {
+            SetDrawerPosition(-800f);
+        }
+        else
+        {
+            // Snap to lowest position (index 0 after sort), then deactivate
+            System.Array.Sort(snapPositions, (a, b) => a.y.CompareTo(b.y));
+            SetDrawerPosition(snapPositions[0].y);
+        }
+
         StartCoroutine(CloseDrawerCoroutine());
-        SetDrawerPosition(pos.y);
     }
 
     IEnumerator CloseDrawerCoroutine()
     {
-        yield return new WaitForSeconds(1);
+        yield return new WaitForSeconds(1f);
         gameObject.SetActive(false);
-        
     }
     
     // Alternative: instantly set position without animation

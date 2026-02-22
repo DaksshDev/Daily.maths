@@ -13,7 +13,6 @@ public class Setup : MonoBehaviour
     public TMP_Text   SignUpButtonErrorIndicator;
 
     [Header("References")]
-    public WelcomeDrawSeq welcomeDrawSeq;
     public GameObject     OnboardingScreen;
     public GameObject     loading;
 
