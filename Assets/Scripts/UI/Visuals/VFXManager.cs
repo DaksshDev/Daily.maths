@@ -13,7 +13,6 @@ public class VFXManager : MonoBehaviour
     public score           scoreManager;
     public AnswerChecker   answerChecker;
     public GameManager     gameManager;
-    public HapticsMgr      hapticsMgr;
 
     [Header("Correct Answer — Confetti")]
     public ParticleSystem correctConfetti;
@@ -96,7 +95,6 @@ public class VFXManager : MonoBehaviour
         }
 
         if (camShaker != null) camShaker.ShakeNormal();
-        if (hapticsMgr != null) hapticsMgr.VibrateCorrect();
 
         int coinsEarned = scoreManager != null ? scoreManager.GetSessionCoins() : 0;
         int xpEarned    = scoreManager != null ? scoreManager.GetSessionXP()    : 0;
@@ -180,7 +178,6 @@ public class VFXManager : MonoBehaviour
             }
 
         if (camShaker != null) camShaker.ShakeCustom(ResultShakeIntensity, ResultShakeDuration);
-        if (hapticsMgr != null) hapticsMgr.VibrateDefault();
     }
 
     // =========================================================================
@@ -218,14 +215,12 @@ public class VFXManager : MonoBehaviour
             StartCoroutine(HideAfterDelay(wrongTextObject, 1.0f));
         }
         if (camShaker  != null) camShaker.ShakeCustom(WrongShakeIntensity, WrongShakeDuration);
-        if (hapticsMgr != null) hapticsMgr.VibrateWrong();
         PlaySound(errorTickClip);
     }
 
     private IEnumerator SkipRoutine()
     {
         if (camShaker  != null) camShaker.ShakeCustom(SkipShakeIntensity, SkipShakeDuration);
-        if (hapticsMgr != null) hapticsMgr.VibrateSkipped();
         yield return StartCoroutine(FreezeTime(freezeDuration));
         if (skippedTextObject != null)
         {

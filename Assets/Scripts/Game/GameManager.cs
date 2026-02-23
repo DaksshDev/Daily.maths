@@ -344,6 +344,7 @@ public class GameManager : MonoBehaviour
 
         if (transition != null)
             transition.CloseGameScreen();
+        
         else
             Debug.LogWarning("[GameManager] ExitGame: HomeToPracticeTransition not assigned.");
     }

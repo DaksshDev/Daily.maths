@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections;
+using UnityEngine.SceneManagement;
 
 public class HomeToPracticeTransition : MonoBehaviour
 {
@@ -64,5 +65,7 @@ public class HomeToPracticeTransition : MonoBehaviour
     {
         GameScreen.SetActive(false);
         HomeScreen.gameObject.SetActive(true);
+        //refresh whole game for some reason
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 }
