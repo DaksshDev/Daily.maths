@@ -18,10 +18,10 @@ Downloads are available in the [Releases](https://github.com/DaksshDev/Daily.mat
 ## Screenshots
 
 <div align="center">
-  <img src="screenshots/home.png" width="200" alt="Home Screen"/>
-  <img src="screenshots/game.png" width="200" alt="Game View"/>
-  <img src="screenshots/practice.png" width="200" alt="Practice View"/>
-  <img src="screenshots/debug.png" width="200" alt="Debug Tools"/>
+  <img src="docs/images/home.png" width="200" alt="Home Screen"/>
+  <img src="docs/images/gameplay.png" width="200" alt="Game View"/>
+  <img src="docs/images/practice.png" width="200" alt="Practice View"/>
+  <img src="docs/images/devtool.png" width="200" alt="Debug Tools"/>
 </div>
 
 *Custom editor window to debug the game*
