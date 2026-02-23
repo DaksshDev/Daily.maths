@@ -23,9 +23,10 @@ Downloads are available in the [Releases](https://github.com/DaksshDev/Daily.mat
   <img src="docs/images/practice.png" width="200" alt="Practice View"/>
 </div>
 
-
-<img src="docs/images/devtool.png" width="200" alt="Debug Tools"/>
-*Custom editor window to debug the game*
+<div align="center">
+  <img src="docs/images/devtool.png" width="600" alt="Debug Tools"/>
+  <p><i>Custom editor window to debug the game</i></p>
+</div>
 
 
 ## Getting Started With The Code
@@ -63,7 +64,6 @@ Built with Unity and C# (Uses some free assets that can be found on the [Unity A
 Found a bug or want to add something? Feel free to open an issue or submit a pull request. (**Please create an issue before submitting a PR**)
 
 ## Project Structure
-
 ```
 Daily.math/
 ├── Assets/           # All game assets, scripts, scenes
